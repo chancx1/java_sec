@@ -14,6 +14,8 @@ JAVA WEB的开发，本质上是Http接口的开发。因为无论是开发Web�
 
 ## JavaWeb框架-Servlet
 
+### 概论
+
 ​`Servlet`是Java EE（现Jakarta EE）规范中定义的接口。它是一个运行在Web服务器（如Tomcat、Jetty）或应用服务器（如WildFly、GlassFish）中的Java程序，用于处理客户端的HTTP请求并生成HTTP响应。
 
 Servlet是Java Web技术的底层基础，它直接与HTTP协议交互。
@@ -33,6 +35,8 @@ Servlet是Java Web技术的底层基础，它直接与HTTP协议交互。
 - 需要手动管理很多细节（如请求参数解析、视图渲染、异常处理等）
 
 ‍
+
+### 简单的Servlet项目
 
 **Demo演示：**
 
@@ -65,7 +69,7 @@ public class HelloServlet extends HttpServlet {
 
 需要配置好tomcat服务器，并且配置web.xml文件，指定类和对应的路由
 
-```java
+```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -84,7 +88,109 @@ public class HelloServlet extends HttpServlet {
 </web-app>
 ```
 
-我这里设置了/hello路由，指定HelloServlet类，访问页面，这样就可以返回HelloServlet类中`doGet()`方法，当然也可以使用`doPost()`来接收POST请求
+我这里设置了/hello路由，指定`HelloServlet`类，访问http://127.0.0.1:8080/hello页面，这样就可以返回`HelloServlet`类中`doGet()`方法，当然也可以使用`doPost()`来接收POST请求
+
+‍
+
+### Servlet生命周期
+
+那么在上述过程中Servlet底层是如何处理请求的呢
+
+![image](assets/image-20250828113950-88gl65z.png)
+
+上图可以表示Servlet生命周期的整个过程，大致分为三个阶段
+
+- 初始化
+- 执行
+- 销毁
+
+‍
+
+**初始化阶段(init)**
+
+这里新建一个类，用注释的方式定义路由，更加清晰直观一点（ **@WebServlet注解是Servlet3.0规范中引入的特性，冲突以web.xml为准**）
+
+```java
+@WebServlet(name = "TestServlet", value = "/helloyou")
+public class TestServlet extends HttpServlet {
+    @Override
+    public void init() {
+        System.out.println("TestServlet init");
+    }
+
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException{
+        PrintWriter out = response.getWriter();
+        out.println("hello, world");
+    }
+
+    @Override
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException{
+    }
+}
+```
+
+使用`@WebServlet(name="TestServlet", value="/hello")`这种方式表示/hello路由，省去了配置web.xml的复杂操作
+
+并且当我们访问该路径时，`init()`是最先触发的方法
+
+‍
+
+**执行阶段(service)**
+
+service方法是执行实际的代码的方法，这个方法会去处理来自客户端的请求，会根据`request.getMethod()`来判断请求类型，并自动调用相应的`doGet()`或者`doPost()`等方法，它触发较`init()`晚但是较`doGet()`和`doPost()`要早
+
+‍
+
+```java
+@WebServlet(name = "TestServlet", value = "/helloyou")
+public class TestServlet extends HttpServlet {
+    @Override
+    public void init() {
+        System.out.println("TestServlet init");
+    }
+
+    protected void service(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        PrintWriter out = resp.getWriter();
+        out.println("xxxxxxxxxxxxx");
+    }
+
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException{
+        PrintWriter out = response.getWriter();
+        out.println("hello, world");
+    }
+}
+
+```
+
+这样访问页面斌不会触发`doGet()`方法，而是触发了service方法
+
+如果没有service方法的话，会根据客户端的**请求方式**来决定触发`doGet()`还是`doPost()`​
+
+‍
+
+**销毁阶段(destroy)**
+
+销毁方法只会在Servlet生命周期结束的时候进行一次调用，一般来说这个方法常用来关闭数据库的连接或者关闭一些流操作。
+
+```java
+    public void destroy(){
+        System.out.println("TestServlet destroy");
+    }
+```
+
+这里会发现关闭tomcat时即可触发该方法
+
+‍
+
+### Servlet参数传递方式
+
+‍
+
+#### **getParameter()方法**
+
+可以用`req.getParameter("id");`来接收id参数，使用方法定义时的`HttpServletRequest req`，它抽象了HTTP请求的内容，这是Servlet中最常用的传参方式
 
 ```java
 public class LoginServlet extends HttpServlet {
@@ -99,13 +205,76 @@ public class LoginServlet extends HttpServlet {
 }
 ```
 
-可以用`GetParameter()`来接收参数，这就是Servlet中的传参方式
-
-当然，也可以通过引入session模块来管理session
+并可以使用`PrintWriter`将id值打印在返回包里面
 
 ‍
 
-> 	它本质上就是一个TCP Server，它首先会去监听服务端的某个端口，例如8080，并在请求来临时获取Socket。再从Socket中获取Http请求参数（包括Head、URL、Body中的数据），把请求参数传递给真正处理业务逻辑的Handler，Handler处理完数据后，再把返回写入到Socket，完成整个Http的服务端响应过程。
+#### **getParameterValues()方法**
+
+同样是在`doGet()`、`doPost()`或者`service`中都适用，这个方法与`getParameter()`不同的地方是它可以获取多个值，并返回一个数组
+
+对于多值参数，始终应该使用`getParameterValues()`，如果不确定到底有几个值，也应该使用它来接收，并进行空值检查
+
+```java
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        String[] hobbies = request.getParameterValues("hobby");
+
+        if (hobbies != null){
+            for (String hobby : hobbies) {
+                System.out.println(hobby);}
+        }
+    }
+```
+
+这样我们输入 `http://127.0.0.1/helloyou?hobby=sport&hobby=swim` 就可以传递多个值
+
+‍
+
+#### getParameterNames()、getParameterMap 方法
+
+它们可以用来获取多个参数和对应的值，同样是在`doGet()`、`doPost()`或者`service`中都适用
+
+```java
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException{
+        Enumeration<String> names = request.getParameterNames();
+        while(names.hasMoreElements()){
+            String name = names.nextElement();
+            String value = request.getParameter(name);
+            System.out.println(name + ":" + value);
+        }
+    }
+```
+
+‍
+
+#### getInputStream()、getReader() 方法
+
+接收流的传参其实也很好理解，就是类似于php中的 `file_get_contents('php://input')`这种方式，接收HTTP数据包流
+
+```java
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        ServletInputStream inputStream = request.getInputStream();
+        byte[] arr = new byte[1024];
+        int len;
+        while ((len = inputStream.read(arr)) != -1){
+            System.out.println(new String(arr,0,len));
+        }
+        inputStream.close();
+    }
+```
+
+同样也是可以用在`doGet()`、`doPost()`或者`service`中
+
+‍
+
+注意这里如果先调用了`getParameter()`, `getParameterValues()` 等方法，可能会无法获取到完整的数据流，所以如果需要接收数据流直接使用`getInputStream()`以及`getReader()`，而不要先调用任何其他方法
+
+‍
+
+### Servlet总结
+
+> 	Servlet 容器（例如tomcat）本质上就是一个TCP Server，它首先会去监听服务端的某个端口，例如8080，并在请求来临时获取Socket。再从Socket中获取Http请求参数（包括Head、URL、Body中的数据），把请求参数传递给真正处理业务逻辑的Handler，Handler处理完数据后，再把返回写入到Socket，完成整个Http的服务端响应过程。
 >
 > 	以上Http请求的监听、Handler的选择、请求参数的处理、请求结果的返回，这些所有Http接口的处理逻辑都是一致，可以封装为公共的部分，但业务处理Handler，由业务决定，跟着业务的逻辑走。这就是Servlet标准所定义的两个方面，即Servlet容器和Servlet API。
 
@@ -129,7 +298,7 @@ Servlet API在部署时，需要先准备好容器环境，如Tomcat，然后再
 
 ‍
 
-**Servlet与JSP**
+#### **Servlet与JSP**
 
 - 早期，很多开发者直接写 **JSP 页面**（里面夹杂 HTML + Java 代码 `<% %>`），再通过 `web.xml` 映射，完成简单的逻辑和页面展示。
 - 后来，开发者会把业务逻辑写在 **Servlet** 类里，负责处理请求、调用业务代码、准备数据；  
@@ -138,17 +307,10 @@ Servlet API在部署时，需要先准备好容器环境，如Tomcat，然后再
 
 ‍
 
-**Servlet与jsp马**
+#### **Servlet与历史漏洞**
 
-- 早期**JSP 文件既是前端页面，又能执行后端 Java 逻辑的话**，黑客只要能上传 `.jsp`，就能控制服务器。
-- 随着技术的演进，在现在的正规MVC架构中，JSP文件仅用于数据展示，**不涉及业务逻辑**，也**不允许被直接访问**，即使能上传也访问不到，大大减少了JSP上传Getshell的存在。
-- Spring Boot中默认**没有JSP支持，** 所以大多数现代项目不会存在JSP马。
-
-‍
-
-同理，早期的Tomcat 弱口令`/manager`页面上传War包Getshell也是一个道理，现代更多使用框架，不会暴露`/manager`页面，避免了这种漏洞。
-
-‍
+- **JSP 马**：其危险性源于 JSP 技术本身**将视图与业务逻辑耦合**的设计。黑客上传的 `.jsp` 文件会被容器直接编译执行。现代 MVC 架构**分离了逻辑与视图**，并且 Spring Boot 等框架默认**不再支持 JSP**，使得此类漏洞大大减少。
+- ​**Tomcat Manager 弱口令上传 War 包**：这本质上是**运维安全**问题。Tomcat 提供的管理功能（`/manager/html`）如果暴露在公网且使用弱口令，攻击者可以直接部署恶意的 War 包来获取 Shell。现代部署实践中，管理后台通常会被隐藏或置于内网，并强制使用强密码，从而 mitigating（缓解）这种风险。
 
 ‍
 
@@ -248,9 +410,17 @@ Spring MVC的底层核心，还包括Spring框架的IOC容器，即`ApplicationC
 
 - Spring Boot提供的自动配置节省了编写代码的时间和精力成本，减少了开发时间并简化了配置。Spring Boot使你能够以符合DevOps和云友好的方式构建应用程序。它易于启动、管理和定制，并且不需要XML配置。
 
+‍
+
+‍
+
+#### 简单的Spring boot项目
+
+这里来写一个小demo看看，首先创建项目，选择Spring Web依赖
+
 ![image](assets/image-20250828100027-pidye2d.png)
 
-这里来写一个小demo看看，首先创建项目，选择Spring Web依赖，写一个Controller
+写一个Controller控制器
 
 ```java
 package org.example.testspringbootdemo.demos.web;
@@ -269,26 +439,203 @@ public class HelloController {
 }
 ```
 
-这样就可以了，启动`Application`服务，直接访问`127.0.0.1:8080/hello`​
-
-并且传参也非常简单，
+这样就可以了，启动`Application`服务，直接访问`127.0.0.1:8080/hello`，这样页面就回返回我们控制器中return的内容
 
 ‍
 
-> **Spring Boot 路由：**
->
-> - 使用`@RequestMapping` `@GetMapping` `@PostMapping` 等注解
-> - 直接在Controller中配置注解，非常方便快速
->
-> ‍
->
-> **Spring boot 传参：**
->
-> - 使用`@RequestParam`获取参数
-> - 可以给默认值
-> - 也可以使用路径参数，`@PathVariable`绑定路径，例如 /hello/123 这样传参，123是实参值
+#### Spring Boot 路由定义
+
+这就很简单了，只需要通过注解来规定
+
+```java
+package org.example.testspringbootdemo.demos.web;
+
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+public class HelloController {
+
+    @PostMapping("/hello")
+    public String hello(@RequestParam(defaultValue = "World") String name){
+        return "Hello "+name+"!";
+    }
+
+    @GetMapping("/hello")
+    public String birthday(@RequestParam(defaultValue = "World") String name){
+        return "Happy! "+name+"!";
+    }
+
+    @RequestMapping("/")
+    public String index(){
+        return "hello world!";
+    }
+}
+```
+
+​`@RequestMapping("/index")`即表示GET方法或者POST方法均可，也可以使用`@GetMapping("/hello")`只接收GET方法
 
 ‍
+
+#### Spring Boot 参数传递
+
+##### 隐式声明
+
+看起来最简单的一种传参方式，直接在方法名规定参数即可
+
+```java
+@RestController
+public class HelloController {
+    @GetMapping("/hello")
+    public String birthday(String name,int age){
+        return "Happy! "+name+"!" + age;
+    }
+}
+```
+
+这种方式被称为隐式绑定，是因为Spring后台会进行参数解析，如果是简单类型的参数（String、int、integer、long、boolean），spring会默认尝试从**请求参数**中查找同名的参数并绑定
+
+这个过程是由Spring的`HandlerMethodArgumentResolver`机制完成的，具体是`RequestParamMethodArgumentResolver`在处理简单类型时，即使没有注解也会尝试解析
+
+这种方式优点是代码整洁干净，基本类型的参数会获得默认值，而不会抛出错误；对于不熟悉Spring的开发者可能不知道参数是从哪里来的
+
+‍
+
+##### 显式声明
+
+与隐式声明很接近，区别是规定好了哪些参数必须从请求获取，优点在于代码可读性高，可以设置默认参数，缺点就是灵活性差一点，缺少参数就会抛出异常
+
+在要获取的参数前加上`@RequestParam`即可
+
+```java
+@RestController
+public class HelloController {
+    @GetMapping("/hello")
+    public String birthday(@RequestParam String name,@RequestParam int age){
+        return "Happy! "+name+"!" + age;
+    }
+}
+```
+
+实际的开发中建议使用显式声明，使得代码可读性更高
+
+‍
+
+##### 路径绑定传递参数
+
+可以理解为thinkphp框架中那种传参方式，/index/id/123 这样传递参数名和参数值
+
+同样使用注解规定好格式，然后使用`@PathVariable`来接收
+
+```java
+@RestController
+public class HelloController {
+    @RequestMapping("/hello/{id}/{name}")
+    public String hello(@PathVariable int id,@PathVariable String name){
+        return "id: "+id+"  name: "+name;
+    }
+}
+```
+
+‍
+
+##### 实例化对象传参
+
+这里先写一个类
+
+```java
+package org.example.testspringbootdemo.demos.web;
+
+public class dome {
+    String name;
+    int id;
+    String code;
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getCode(){
+        return code;
+    }
+
+    public void setCode(String code){
+        this.code = code;
+    }
+}
+```
+
+然后我们去定义控制器，传入dome对象
+
+```java
+@RestController
+public class HelloController {
+    @RequestMapping("/hello123")
+    public String hello(dome dome){
+        return dome.getCode() + " " + dome.getName() +" " + dome.getId();
+    }
+}
+```
+
+访问`http://127.0.0.1:8080/hello123?name=hello&id=1&code=123213`，这种传参方式，dome类的成员变量我们是可控的，在我们访问页面的时候才会对对象进行初始化，Spring会遍历HTTP请求中的所有参数，查找dome类是否存在同名的属性，然后调用对应的setter方法，因此我们可以传入可控的成员变量
+
+也就是说，Spring在调用方法之前，帮我们完成了 `new dome()`，`dome.setId()` 等等一系列的操作
+
+‍
+
+‍
+
+‍
+
+‍
+
+#### Spring Boot 部署方式
+
+Spring Boot项目存在以下几种部署方式
+
+- ​`war`包：适合**传统企业内网**应用（部署到外部Tomcat、WebLogic、JBoss等）
+- ​`jar`包：自带嵌入式容器（Tomcat、Jetty等），**微服务/云原生**场景更常用
+- **容器化部署**（Docker / K8S 常用）
+
+  - 把Spring Boot项目做成Docker镜像
+  - 优点：跨环境一致性，方便自动化部署、弹性扩缩容
+
+‍
+
+当我们通过Java组件漏洞获取到命令权限后，想要将jar包或者war包的源码down下来审计一番，它们的包结构存在一些微小的差异
+
+- **JAR 包结构**
+
+  - ​`BOOT-INF/classes/` → 项目源码编译后的字节码（主要审计对象）。
+  - ​`BOOT-INF/lib/` → 依赖库。
+  - ​`META-INF/MANIFEST.MF` → 启动类信息。
+  - 解包方式：`jar -xvf app.jar`​
+  - **攻击面集中在Spring Boot自身，比如Actuator、Spring MVC Controller**
+- **WAR 包结构**
+
+  - ​`WEB-INF/classes/` → 项目编译字节码。
+  - ​`WEB-INF/lib/` → 项目依赖库。
+  - ​`WEB-INF/web.xml` → Web 容器配置（Servlet 映射等）。
+  - 解包方式：`jar -xvf app.war`​
+  - **还要考虑外部Tomcat/JBoss漏洞**
+
+‍
+
+解包后直接用idea打开class文件反编译，审计反编译后的代码即可，Java项目是很难得到绝对的源码的，都是反编译后的代码
+
+- jar 核心逻辑大多在注解，直接去看Controller
+- war 需要注意 `web.xml` `struts.xml`等配置文件
 
 ‍
 
@@ -303,3 +650,9 @@ Spring MVC 是基于Servlet的一个MVC框架，主要解决Web开发问题，�
 为了简化开发者的使用，从而创造性的推出了Spring Boot框架，约定胜于配置，简化Spring MVC的配置流程。
 
 ![image](assets/image-20250828102155-tdmkr8n.png)
+
+‍
+
+在生产环境中，Spring Boot 一般不会直接对外暴露，而是通过 **Nginx 反向代理（这是一个现代渗透中至关重要的技术，直接关系到你的攻击面，不熟悉的的务必搜索补习）**
+
+它可以设置只暴露需要暴露的路由，而像`/manager`这种页面会更加安全，缩窄了我们的攻击面，但nginx在大型项目中配置的复杂性也会导致开发运维人员有所遗漏，成为我们可利用的点，例如`/actuator`这种路径
